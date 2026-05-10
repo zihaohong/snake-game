@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake Game</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+
+/* Collapsible game menu */
+.game-nav {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 50px;
+}
+.menu-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  height: 100%;
+}
+.menu-btn:hover { opacity: 0.8; }
+.hamburger {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 22px;
+}
+.hamburger span {
+  display: block;
+  height: 2px;
+  background: white;
+  border-radius: 1px;
+  transition: all 0.3s;
+}
+.menu-btn.open .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
+.menu-btn.open .hamburger span:nth-child(2) { opacity: 0; }
+.menu-btn.open .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+
+.games-dropdown {
+  display: none;
+  position: absolute;
+  top: 50px;
+  left: 0;
+  right: 0;
+  background: rgba(30, 30, 60, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 10px 0;
+  z-index: 100;
+  animation: slideDown 0.2s ease;
+}
+.games-dropdown.open { display: block; }
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.games-dropdown a {
+  display: block;
+  color: white;
+  text-decoration: none;
+  padding: 12px 24px;
+  font-size: 16px;
+  transition: background 0.2s;
+}
+.games-dropdown a:hover { background: rgba(255, 255, 255, 0.15); }
+.games-dropdown a.current {
+  background: rgba(255, 255, 255, 0.2);
+  font-weight: bold;
+  border-left: 3px solid #66BB6A;
+}
+
+main { padding: 40px 20px; max-width: 1200px; margin: 0 auto; }
+main h1 { color: white; margin-bottom: 20px; }
+main p { color: white; line-height: 1.6; }
+.game-container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+#gameCanvas {
+  background: #1a1a2e;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+.game-info { display: flex; align-items: center; gap: 20px; color: white; font-size: 18px; }
+#startBtn {
+  padding: 10px 25px;
+  font-size: 16px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+#startBtn:hover { background: #45a049; }
+.game-controls { color: rgba(255, 255, 255, 0.8); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="game-nav">
+  <button class="menu-btn" id="menuBtn">
+    <div class="hamburger"><span></span><span></span><span></span></div>
+    <span class="menu-label">Games</span>
+  </button>
+  <div class="games-dropdown" id="gamesDropdown"></div>
+</div>
+<main>
+  <h1>Snake Game</h1>
+  <div class="game-container">
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+    <div class="game-info">
+      <p>Score: <span id="score">0</span></p>
+      <button id="startBtn">Start Game</button>
+    </div>
+    <div class="game-controls">
+      <p>Use arrow keys or WASD to control the snake</p>
+    </div>
+  </div>
+</main>
+<script>
+// Navigator logic
+let currentLang = 'en';
+let gamesData = {};
+
+async function loadGames() {
+  try {
+    const response = await fetch('../data/links/games.json');
+    gamesData = await response.json();
+    renderGamesDropdown();
+  } catch (error) {
+    console.error('Error loading games:', error);
+  }
+}
+
+function renderGamesDropdown() {
+  const container = document.getElementById('gamesDropdown');
+  const langData = gamesData[currentLang] || gamesData['en'];
+
+  if (!langData.games || langData.games.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = langData.games.map(game => {
+    const isCurrent = game.link === 'snake-game/';
+    return `<a href="${game.link}" class="${isCurrent ? 'current' : ''}">${game.title}</a>`;
+  }).join('');
+}
+
+function detectLanguage() {
+  const lang = navigator.language.toLowerCase();
+  if (lang.startsWith('zh')) { currentLang = 'zh'; }
+}
+
+detectLanguage();
+loadGames();
+
+// Toggle dropdown
+document.getElementById('menuBtn').addEventListener('click', function() {
+  this.classList.toggle('open');
+  document.getElementById('gamesDropdown').classList.toggle('open');
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.game-nav')) {
+    document.getElementById('menuBtn').classList.remove('open');
+    document.getElementById('gamesDropdown').classList.remove('open');
+  }
+});
+
+// Snake Game Logic
+const SnakeGame = {
+  canvas: null,
+  ctx: null,
+  gridSize: 20,
+  snake: [],
+  food: {},
+  direction: 'right',
+  nextDirection: 'right',
+  score: 0,
+  gameLoop: null,
+  isRunning: false,
+
+  init: function() {
+    this.canvas = document.getElementById('gameCanvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.reset();
+    this.bindEvents();
+    this.draw();
+  },
+
+  reset: function() {
+    this.snake = [
+      {x: 10, y: 10},
+      {x: 9, y: 10},
+      {x: 8, y: 10}
+    ];
+    this.direction = 'right';
+    this.nextDirection = 'right';
+    this.score = 0;
+    this.spawnFood();
+    document.getElementById('score').textContent = this.score;
+  },
+
+  spawnFood: function() {
+    const maxX = Math.floor(this.canvas.width / this.gridSize);
+    const maxY = Math.floor(this.canvas.height / this.gridSize);
+    this.food = {
+      x: Math.floor(Math.random() * maxX),
+      y: Math.floor(Math.random() * maxY)
+    };
+  },
+
+  bindEvents: function() {
+    document.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      if (['arrowup', 'w'].includes(key) && this.direction !== 'down') {
+        this.nextDirection = 'up';
+      } else if (['arrowdown', 's'].includes(key) && this.direction !== 'up') {
+        this.nextDirection = 'down';
+      } else if (['arrowleft', 'a'].includes(key) && this.direction !== 'right') {
+        this.nextDirection = 'left';
+      } else if (['arrowright', 'd'].includes(key) && this.direction !== 'left') {
+        this.nextDirection = 'right';
+      }
+    });
+    document.getElementById('startBtn').addEventListener('click', () => {
+      if (!this.isRunning) { this.start(); }
+    });
+  },
+
+  start: function() {
+    this.reset();
+    this.isRunning = true;
+    document.getElementById('startBtn').textContent = 'Playing...';
+    document.getElementById('startBtn').disabled = true;
+    this.gameLoop = setInterval(() => this.update(), 100);
+  },
+
+  update: function() {
+    this.direction = this.nextDirection;
+    const head = {...this.snake[0]};
+    switch (this.direction) {
+      case 'up': head.y--; break;
+      case 'down': head.y++; break;
+      case 'left': head.x--; break;
+      case 'right': head.x++; break;
+    }
+    const maxX = Math.floor(this.canvas.width / this.gridSize);
+    const maxY = Math.floor(this.canvas.height / this.gridSize);
+    if (head.x < 0 || head.x >= maxX || head.y < 0 || head.y >= maxY ||
+        this.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+      this.gameOver();
+      return;
+    }
+    this.snake.unshift(head);
+    if (head.x === this.food.x && head.y === this.food.y) {
+      this.score += 10;
+      document.getElementById('score').textContent = this.score;
+      this.spawnFood();
+    } else {
+      this.snake.pop();
+    }
+    this.draw();
+  },
+
+  draw: function() {
+    this.ctx.fillStyle = '#1a1a2e';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillStyle = '#4CAF50';
+    this.snake.forEach((segment, index) => {
+      this.ctx.fillStyle = index === 0 ? '#66BB6A' : '#4CAF50';
+      this.ctx.fillRect(
+        segment.x * this.gridSize + 1,
+        segment.y * this.gridSize + 1,
+        this.gridSize - 2,
+        this.gridSize - 2
+      );
+    });
+    this.ctx.fillStyle = '#FF5722';
+    this.ctx.fillRect(
+      this.food.x * this.gridSize + 1,
+      this.food.y * this.gridSize + 1,
+      this.gridSize - 2,
+      this.gridSize - 2
+    );
+  },
+
+  gameOver: function() {
+    this.isRunning = false;
+    clearInterval(this.gameLoop);
+    document.getElementById('startBtn').textContent = 'Start Game';
+    document.getElementById('startBtn').disabled = false;
+    alert(`Game Over! Score: ${this.score}`);
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => SnakeGame.init());
+</script>
+</body>
+</html>
