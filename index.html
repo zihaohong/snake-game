@@ -100,7 +100,6 @@ main p { color: white; line-height: 1.6; }
   transition: background 0.3s;
 }
 #startBtn:hover { background: #45a049; }
-.game-controls { color: rgba(255, 255, 255, 0.8); font-size: 14px; }
 .usage-panel {
   background: rgba(255, 255, 255, 0.1);
   padding: 15px 20px;
@@ -133,9 +132,6 @@ main p { color: white; line-height: 1.6; }
       <p>Score: <span id="score">0</span></p>
       <button id="startBtn">Start Game</button>
     </div>
-    <div class="game-controls">
-      <p>Use arrow keys, WASD, or swipe to control the snake</p>
-    </div>
     <div class="usage-panel" id="usagePanel">
       <h3>How to Play</h3>
       <p id="usageText">Loading...</p>
@@ -160,7 +156,7 @@ async function loadGames() {
 
 function renderUsagePanel() {
   const langData = gamesData[currentLang] || gamesData['en'];
-  const currentGame = langData.games.find(game => game.link === 'snake-game/');
+  const currentGame = langData.games.find(game => game.link.includes('snake-game'));
   if (currentGame && currentGame.usage) {
     document.getElementById('usageText').textContent = currentGame.usage;
   }
@@ -175,8 +171,9 @@ function renderGamesDropdown() {
     return;
   }
 
+  const currentUrl = window.location.href;
   container.innerHTML = langData.games.map(game => {
-    const isCurrent = game.link === 'snake-game/';
+    const isCurrent = currentUrl.startsWith(game.link);
     return `<a href="${game.link}" class="${isCurrent ? 'current' : ''}">${game.title}</a>`;
   }).join('');
 }
