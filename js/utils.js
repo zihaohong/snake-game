@@ -10,13 +10,16 @@ const SnakeGame = {
     score: 0,
     gameLoop: null,
     isRunning: false,
+    isGameOver: false,
 
     init: function() {
-        this.canvas = CommonUtils.get('gameCanvas');
+        this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.reset();
         this.bindEvents();
         this.draw();
+        this.loadHelpText();
+        this.loadGames();
     },
 
     reset: function() {
@@ -28,8 +31,8 @@ const SnakeGame = {
         this.direction = 'right';
         this.nextDirection = 'right';
         this.score = 0;
+        this.isGameOver = false;
         this.spawnFood();
-        CommonUtils.get('score').textContent = this.score;
     },
 
     spawnFood: function() {
@@ -55,18 +58,63 @@ const SnakeGame = {
             }
         });
 
-        CommonUtils.get('startBtn').addEventListener('click', () => {
-            if (!this.isRunning) {
-                this.start();
-            }
+        // Start/restart on canvas click or touch
+        this.canvas.addEventListener('click', () => this.handleCanvasInteraction());
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.handleCanvasInteraction();
+        }, { passive: false });
+
+        // Games dropdown
+        const gamesBtn = document.getElementById('gamesBtn');
+        const gamesDropdown = document.getElementById('gamesDropdown');
+        gamesBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            gamesDropdown.classList.toggle('show');
+        });
+
+        document.addEventListener('click', () => {
+            gamesDropdown.classList.remove('show');
+        });
+
+        gamesDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        // Help dropdown
+        const helpBtn = document.getElementById('helpBtn');
+        const helpDropdown = document.getElementById('helpDropdown');
+        helpBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            helpDropdown.classList.toggle('show');
+        });
+
+        document.addEventListener('click', () => {
+            helpDropdown.classList.remove('show');
+        });
+
+        helpDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        // Locale dropdown
+        document.getElementById('localeSelect').addEventListener('change', (e) => {
+            this.loadHelpText(e.target.value);
         });
     },
 
+    handleCanvasInteraction: function() {
+        if (!this.isRunning) {
+            this.start();
+        } else if (this.isGameOver) {
+            this.reset();
+            this.start();
+        }
+    },
+
     start: function() {
-        this.reset();
         this.isRunning = true;
-        CommonUtils.get('startBtn').textContent = 'Playing...';
-        CommonUtils.get('startBtn').disabled = true;
+        this.isGameOver = false;
         this.gameLoop = setInterval(() => this.update(), 100);
     },
 
@@ -94,7 +142,6 @@ const SnakeGame = {
 
         if (head.x === this.food.x && head.y === this.food.y) {
             this.score += 10;
-            CommonUtils.get('score').textContent = this.score;
             this.spawnFood();
         } else {
             this.snake.pop();
@@ -125,14 +172,74 @@ const SnakeGame = {
             this.gridSize - 2,
             this.gridSize - 2
         );
+
+        // Draw score on canvas
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText(`Score: ${this.score}`, 10, 20);
+
+        if (this.isGameOver) {
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillStyle = 'white';
+            this.ctx.font = 'bold 24px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('Game Over!', this.canvas.width / 2, this.canvas.height / 2 - 20);
+            this.ctx.font = '18px Arial';
+            this.ctx.fillText(`Score: ${this.score}`, this.canvas.width / 2, this.canvas.height / 2 + 10);
+            this.ctx.fillText('Tap to restart', this.canvas.width / 2, this.canvas.height / 2 + 40);
+            this.ctx.textAlign = 'left';
+        } else if (!this.isRunning) {
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillStyle = 'white';
+            this.ctx.font = 'bold 24px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('Snake Game', this.canvas.width / 2, this.canvas.height / 2 - 20);
+            this.ctx.font = '18px Arial';
+            this.ctx.fillText('Tap to start', this.canvas.width / 2, this.canvas.height / 2 + 10);
+            this.ctx.textAlign = 'left';
+        }
     },
 
     gameOver: function() {
         this.isRunning = false;
+        this.isGameOver = true;
         clearInterval(this.gameLoop);
-        CommonUtils.get('startBtn').textContent = 'Start Game';
-        CommonUtils.get('startBtn').disabled = false;
-        alert(`Game Over! Score: ${this.score}`);
+        this.draw();
+    },
+
+    loadHelpText: function(locale) {
+        locale = locale || 'en';
+        const helpTexts = {
+            en: {
+                title: 'How to Play',
+                text: 'Use arrow keys or WASD to control the snake. Eat food to grow and increase your score. Avoid hitting walls or yourself!'
+            },
+            zh: {
+                title: '如何玩',
+                text: '使用方向键或WASD控制蛇。吃食物来增长并增加分数。避免撞墙或撞到自己！'
+            }
+        };
+        const help = helpTexts[locale] || helpTexts.en;
+        document.getElementById('helpTitle').textContent = help.title;
+        document.getElementById('helpText').textContent = help.text;
+    },
+
+    loadGames: function() {
+        fetch('https://zihaohong.github.io/data/links/games.json')
+            .then(response => response.json())
+            .then(data => {
+                const locale = document.getElementById('localeSelect').value;
+                const games = data[locale]?.games || data.en.games;
+                const currentPath = window.location.pathname;
+                const dropdown = document.getElementById('gamesDropdown');
+                dropdown.innerHTML = games.map(game => {
+                    const isCurrent = currentPath.includes(game.link.replace('https://zihaohong.github.io/', ''));
+                    return `<a href="${game.link}" class="${isCurrent ? 'current' : ''}">${game.title}</a>`;
+                }).join('');
+            })
+            .catch(error => console.error('Error loading games:', error));
     }
 };
 
